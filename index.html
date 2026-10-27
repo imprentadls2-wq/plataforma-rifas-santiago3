@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plataforma Profesional de Rifas & Sorteos</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#fff1f2',
+              100: '#ffe4e6',
+              500: '#f43f5e',
+              600: '#e11d48',
+              700: '#be123c',
+              900: '#881337',
+            },
+            gold: {
+              400: '#fbbf24',
+              500: '#f59e0b',
+              600: '#d97706',
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'float': 'float 4s ease-in-out infinite',
+            'shimmer': 'shimmer 2s linear infinite',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-10px)' },
+            },
+            shimmer: {
+              '0%': { backgroundPosition: '-200% 0' },
+              '100%': { backgroundPosition: '200% 0' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- React & Babel Core -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Supabase JS Library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: #0b0f19;
+      color: #f3f4f6;
+      overflow-x: hidden;
+    }
+    .font-mono-num {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glass-card {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card-gold {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(17, 24, 39, 0.8) 100%);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .promo-card-3d {
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transform-style: preserve-3d;
+      perspective: 1000px;
+    }
+    .promo-card-3d:hover {
+      transform: translateY(-8px) rotateX(4deg) scale(1.02);
+      box-shadow: 0 20px 30px -10px rgba(225, 29, 72, 0.3);
+    }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    @media print {
+      body * { visibility: hidden; }
+      #printable-receipt, #printable-receipt * { visibility: visible; }
+      #printable-receipt { position: absolute; left: 0; top: 0; width: 100%; color: #000; background: #fff !important; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const DEFAULT_RAFFLE_DATA = {
+      id: "rifa-2026-001",
+      title: "Gran Sorteo Millonario Santiago",
+      subtitle: "¡Ganá un iPhone 17 Pro Max, una PS5 o $300.000 en efectivo!",
+      description: "Participá en nuestro gran sorteo transparente. Los números se asignan de forma oficial al verificar el pago por WhatsApp.",
+      startNum: 1,
+      endNum: 9999,
+      digits: 4,
+      drawDate: "2026-12-20",
+      drawNoticeText: "Sorteo según la Tómbola Santiagueña Nocturna una vez completada la venta.",
+      status: "in_progress",
+      adminPhone: "5493851234567",
+      winners: [],
+      prizes: [
+        { id: 1, name: "iPhone 17 Pro Max (256GB Titanium)", desc: "Nuevo de paquete sellado con garantía oficial", image: "https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=600&q=80" },
+        { id: 2, name: "PlayStation 5 Slim (1TB Digital)", desc: "Incluye 2 Joysticks DualSense + Juego Digital", image: "https://images.unsplash.com/photo-1606813907291-d86efa9b94db?auto=format&fit=crop&w=600&q=80" },
+        { id: 3, name: "$300.000 En Efectivo", desc: "Transferencia bancaria inmediata o billetes en mano", image: "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=600&q=80" }
+      ],
+      promotions: [
+        { id: "p1", chances: 1, price: 5000, label: "Individual", recommended: false },
+        { id: "p2", chances: 3, price: 12000, label: "Popular", recommended: true },
+        { id: "p3", chances: 5, price: 18000, label: "Super Pack", recommended: false },
+        { id: "p4", chances: 10, price: 30000, label: "Ultra Pack Súper Ahorro", recommended: false }
+      ],
+      rulesText: "1. La reserva mediante la solicitud de compra no asegura los números hasta haber enviado el comprobante de pago por WhatsApp y haber sido verificado por el administrador.\n2. Las solicitudes permanecen pendientes hasta su confirmación o cancelación manual por parte de la administración.\n3. Los números son asignados por el servidor de forma aleatoria y definitiva únicamente al momento de la confirmación."
+    };
+
+    class DatabaseEngine {
+      static STORAGE_KEY_RAFFLES = 'raffle_system_multi_v2';
+      static STORAGE_KEY_ORDERS = 'raffle_system_orders_v2';
+      static STORAGE_KEY_LOGS = 'raffle_system_logs_v2';
+
+      static getRaffles() {
+        const data = localStorage.getItem(this.STORAGE_KEY_RAFFLES);
+        return data ? JSON.parse(data) : [DEFAULT_RAFFLE_DATA];
+      }
+
+      static getActiveRaffle() {
+        const raffles = this.getRaffles();
+        return raffles[0] || DEFAULT_RAFFLE_DATA;
+      }
+
+      static saveRaffleConfig(updatedConfig) {
+        const raffles = this.getRaffles();
+        const idx = raffles.findIndex(r => r.id === updatedConfig.id);
+        if (idx >= 0) raffles[idx] = updatedConfig;
+        else raffles.unshift(updatedConfig);
+        localStorage.setItem(this.STORAGE_KEY_RAFFLES, JSON.stringify(raffles));
+        this.logAudit("Configuración de Rifa actualizada: " + updatedConfig.title, "Admin");
+      }
+
+      static getOrders(raffleId) {
+        const data = localStorage.getItem(this.STORAGE_KEY_ORDERS);
+        const allOrders = data ? JSON.parse(data) : [];
+        return raffleId ? allOrders.filter(o => o.raffleId === raffleId) : allOrders;
+      }
+
+      static saveOrders(orders) {
+        localStorage.setItem(this.STORAGE_KEY_ORDERS, JSON.stringify(orders));
+      }
+
+      static getLogs() {
+        const data = localStorage.getItem(this.STORAGE_KEY_LOGS);
+        return data ? JSON.parse(data) : [];
+      }
+
+      static logAudit(action, user = "Sistema") {
+        const logs = this.getLogs();
+        logs.unshift({
+          id: 'log-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          timestamp: new Date().toISOString(),
+          action,
+          user
+        });
+        localStorage.setItem(this.STORAGE_KEY_LOGS, JSON.stringify(logs.slice(0, 300)));
+      }
+
+      static createPurchaseRequest(raffleId, buyerInfo, promo) {
+        const orders = this.getOrders();
+        const uniqueCode = 'SOL-' + Math.floor(100000 + Math.random() * 900000);
+        const newOrder = {
+          id: uniqueCode,
+          raffleId: raffleId,
+          createdAt: new Date().toISOString(),
+          firstName: buyerInfo.firstName.trim(),
+          lastName: buyerInfo.lastName.trim(),
+          phone: buyerInfo.phone.trim(),
+          promoLabel: promo.label,
+          chancesCount: promo.chances,
+          totalAmount: promo.price,
+          assignedNumbers: [],
+          status: 'pending_payment',
+          paymentConfirmedAt: null
+        };
+        orders.unshift(newOrder);
+        this.saveOrders(orders);
+        this.logAudit(`Nueva solicitud ${uniqueCode} registrada por ${buyerInfo.firstName} ${buyerInfo.lastName} (${promo.chances} chances)`, "Público");
+        return newOrder;
+      }
+
+      static confirmPaymentAndAssignNumbers(orderId, adminName = "Admin") {
+        const orders = this.getOrders();
+        const order = orders.find(o => o.id === orderId);
+        if (!order) throw new Error("Solicitud no encontrada.");
+        if (order.status === 'confirmed') throw new Error("Esta solicitud ya fue confirmada anteriormente.");
+        if (order.status === 'cancelled') throw new Error("No se puede confirmar una solicitud anulada.");
+
+        const raffles = this.getRaffles();
+        const config = raffles.find(r => r.id === order.raffleId) || DEFAULT_RAFFLE_DATA;
+        const confirmedOrders = orders.filter(o => o.raffleId === order.raffleId && o.status === 'confirmed');
+        const usedNumbers = new Set();
+        confirmedOrders.forEach(o => o.assignedNumbers.forEach(n => usedNumbers.add(n)));
+
+        const availablePool = [];
+        for (let i = config.startNum; i <= config.endNum; i++) {
+          const numStr = String(i).padStart(config.digits || 4, '0');
+          if (!usedNumbers.has(numStr)) availablePool.push(numStr);
+        }
+
+        if (availablePool.length < order.chancesCount) {
+          throw new Error(`No hay suficientes números libres. Quedan ${availablePool.length} disponibles.`);
+        }
+
+        const selectedNums = [];
+        for (let i = 0; i < order.chancesCount; i++) {
+          const randIndex = Math.floor(Math.random() * availablePool.length);
+          selectedNums.push(availablePool.splice(randIndex, 1)[0]);
+        }
+
+        order.status = 'confirmed';
+        order.paymentConfirmedAt = new Date().toISOString();
+        order.assignedNumbers = selectedNums;
+        this.saveOrders(orders);
+        this.logAudit(`PAGO CONFIRMADO para ${order.id}. Números: [${selectedNums.join(', ')}]`, adminName);
+        return order;
+      }
+
+      static cancelOrder(orderId, reason = "Anulada", adminName = "Admin") {
+        const orders = this.getOrders();
+        const order = orders.find(o => o.id === orderId);
+        if (!order) throw new Error("Solicitud no encontrada.");
+        order.status = 'cancelled';
+        order.assignedNumbers = [];
+        this.saveOrders(orders);
+        this.logAudit(`Solicitud ${orderId} cancelada. Motivo: ${reason}`, adminName);
+      }
+
+      static finalizeRaffleWithWinners(raffleId, winnersArray, adminName = "Admin") {
+        const raffles = this.getRaffles();
+        const raffle = raffles.find(r => r.id === raffleId);
+        if (!raffle) throw new Error("Rifa no encontrada.");
+        raffle.status = 'closed';
+        raffle.winners = winnersArray;
+        raffle.closedAt = new Date().toISOString();
+        this.saveRaffleConfig(raffle);
+        this.logAudit(`Rifa ${raffleId} finalizada con ganadores.`, adminName);
+      }
+    }
+
+    function App() {
+      const [view, setView] = useState('public');
+      const [raffles, setRaffles] = useState(DatabaseEngine.getRaffles());
+      const [activeRaffle, setActiveRaffle] = useState(DatabaseEngine.getActiveRaffle());
+      const [orders, setOrders] = useState(DatabaseEngine.getOrders(activeRaffle.id));
+      const [logs, setLogs] = useState(DatabaseEngine.getLogs());
+
+      const [selectedPromo, setSelectedPromo] = useState(null);
+      const [buyerInfo, setBuyerInfo] = useState({ firstName: '', lastName: '', phone: '', acceptedTerms: false });
+      const [activeOrder, setActiveOrder] = useState(null);
+      const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+      
+      const [lookupCode, setLookupCode] = useState('');
+      const [queriedOrder, setQueriedOrder] = useState(null);
+      const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+      const [notification, setNotification] = useState(null);
+
+      const [adminUser, setAdminUser] = useState('');
+      const [adminPass, setAdminPass] = useState('');
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      const [adminTab, setAdminTab] = useState('overview');
+
+      useEffect(() => { refreshData(); }, [activeRaffle.id]);
+
+      const refreshData = () => {
+        const allRaffles = DatabaseEngine.getRaffles();
+        setRaffles(allRaffles);
+        const currentActive = allRaffles.find(r => r.id === activeRaffle.id) || allRaffles[0];
+        setActiveRaffle(currentActive);
+        setOrders(DatabaseEngine.getOrders(currentActive.id));
+        setLogs(DatabaseEngine.getLogs());
+      };
+
+      const showToast = (message, type = 'info') => {
+        setNotification({ message, type });
+        setTimeout(() => setNotification(null), 4000);
+      };
+
+      const stats = useMemo(() => {
+        const totalNumbers = (activeRaffle.endNum - activeRaffle.startNum) + 1;
+        const confirmedOrders = orders.filter(o => o.status === 'confirmed');
+        const pendingOrders = orders.filter(o => o.status === 'pending_payment');
+        
+        let soldCount = 0;
+        confirmedOrders.forEach(o => soldCount += o.assignedNumbers.length);
+        const available = Math.max(0, totalNumbers - soldCount);
+        const percentSold = totalNumbers > 0 ? Math.round((soldCount / totalNumbers) * 100) : 0;
+        const totalRevenue = confirmedOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+        const pendingRevenue = pendingOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+
+        return { totalNumbers, soldCount, available, percentSold, confirmedOrders, pendingOrders, totalRevenue, pendingRevenue };
+      }, [activeRaffle, orders]);
+
+      const handleStartReservation = (promo) => {
+        if (activeRaffle.status !== 'in_progress') {
+          showToast("Esta rifa no se encuentra disponible para nuevas ventas.", "error");
+          return;
+        }
+        setSelectedPromo(promo);
+        setCheckoutModalOpen(true);
+      };
+
+      const handleConfirmReservation = (e) => {
+        e.preventDefault();
+        if (!buyerInfo.firstName || !buyerInfo.lastName || !buyerInfo.phone || !buyerInfo.acceptedTerms) {
+          showToast("Completá todos los datos y aceptá las bases", "error");
+          return;
+        }
+        try {
+          const order = DatabaseEngine.createPurchaseRequest(activeRaffle.id, buyerInfo, selectedPromo);
+          setActiveOrder(order);
+          refreshData();
+          if (window.confetti) window.confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
+          showToast("¡Solicitud registrada correctamente!", "success");
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      };
+
+      const getWhatsAppLink = (order) => {
+        const message = `¡Hola! Acabo de registrar mi solicitud en ${activeRaffle.title}.\n\n` +
+          `📌 *Código de Solicitud:* ${order.id}\n` +
+          `👤 *Nombre:* ${order.firstName} ${order.lastName}\n` +
+          `🎟️ *Chances:* ${order.chancesCount} (${order.promoLabel})\n` +
+          `💰 *Importe:* $${order.totalAmount.toLocaleString('es-AR')}\n\n` +
+          `Adjunto comprobante de pago.`;
+        return `https://wa.me/${activeRaffle.adminPhone}?text=${encodeURIComponent(message)}`;
+      };
+
+      const handleAdminLogin = (e) => {
+        e.preventDefault();
+        if (adminUser === 'Nicodelasilva' && adminPass === 'Rifas2026!') {
+          setIsLoggedIn(true);
+          setView('admin_dashboard');
+          showToast("Autenticado como Administrador", "success");
+        } else {
+          showToast("Usuario o contraseña incorrectos.", "error");
+        }
+      };
+
+      return (
+        <div className="min-h-screen text-gray-100 flex flex-col justify-between selection:bg-brand-500 selection:text-white">
+          {notification && (
+            <div className={`fixed top-5 right-5 z-50 px-6 py-4 rounded-xl shadow-2xl flex items-center space-x-3 border ${
+              notification.type === 'error' ? 'bg-red-900/90 border-red-500 text-red-100' : 'bg-emerald-900/90 border-emerald-500 text-emerald-100'
+            } backdrop-blur-md`}>
+              <i className="fas fa-bell"></i>
+              <span className="font-medium text-sm">{notification.message}</span>
+            </div>
+          )}
+
+          <header className="sticky top-0 z-40 glass-card border-b border-gray-800">
+            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('public')}>
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-gold-500 flex items-center justify-center shadow-lg">
+                  <i className="fas fa-ticket-alt text-white text-lg"></i>
+                </div>
+                <div>
+                  <h1 className="font-bold text-lg leading-none bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gold-400">
+                    {activeRaffle.title}
+                  </h1>
+                  <p className="text-xs text-gray-400 font-light mt-0.5">Plataforma Oficial de Sorteos</p>
+                </div>
+              </div>
+
+              <div>
+                {view === 'public' ? (
+                  <button onClick={() => setView(isLoggedIn ? 'admin_dashboard' : 'admin_login')} className="text-xs font-semibold px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition">
+                    <i className="fas fa-lock text-brand-500 mr-1.5"></i> {isLoggedIn ? 'Panel Admin' : 'Acceso Admin'}
+                  </button>
+                ) : (
+                  <button onClick={() => setView('public')} className="text-xs font-semibold px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white transition">
+                    <i className="fas fa-globe mr-1.5"></i> Ver Sitio Público
+                  </button>
+                )}
+              </div>
+            </div>
+          </header>
+
+          <main className="mb-auto">
+            {view === 'public' && (
+              <div className="max-w-7xl mx-auto px-4 py-8 space-y-12">
+                <section className="relative rounded-3xl overflow-hidden border border-gray-800 bg-gradient-to-b from-gray-900 to-gray-950 p-6 md:p-12 shadow-2xl">
+                  <div className="grid md:grid-cols-12 gap-8 items-center">
+                    <div className="md:col-span-7 space-y-6">
+                      <span className="inline-flex items-center px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-brand-500/10 text-brand-400 border border-brand-500/20">
+                        <span className="w-2 h-2 rounded-full bg-brand-500 animate-ping mr-2"></span> Sorteo Oficial Activo
+                      </span>
+                      <h2 className="text-4xl md:text-6xl font-extrabold text-white leading-tight">{activeRaffle.title}</h2>
+                      <p className="text-lg text-gray-300 font-light">{activeRaffle.subtitle}</p>
+                      
+                      <div className="p-6 rounded-2xl glass-card space-y-4">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="font-semibold text-gray-300">Progreso de Venta</span>
+                          <span className="font-bold text-gold-400 text-lg">{stats.percentSold}% Vendido</span>
+                        </div>
+                        <div className="w-full bg-gray-800 h-4 rounded-full overflow-hidden p-0.5 border border-gray-700">
+                          <div className="bg-gradient-to-r from-brand-600 via-gold-500 to-emerald-400 h-full rounded-full transition-all duration-1000" style={{ width: `${stats.percentSold}%` }}></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-5 space-y-4">
+                      <div className="text-xs uppercase font-bold text-gold-400 tracking-wider">Premios Principales</div>
+                      {activeRaffle.prizes.map((p, idx) => (
+                        <div key={p.id} className="glass-card p-3 rounded-2xl flex items-center space-x-4">
+                          <img src={p.image} alt={p.name} className="w-16 h-16 object-cover rounded-xl border border-gray-700" />
+                          <div>
+                            <span className="text-xs font-bold text-gold-400">Premio #{idx + 1}</span>
+                            <h4 className="font-bold text-white text-sm">{p.name}</h4>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="space-y-6">
+                  <div className="text-center space-y-2">
+                    <h3 className="text-3xl font-extrabold text-white">Elegí tu Paquete de Chances</h3>
+                    <p className="text-sm text-gray-400">Seleccioná tu combo y aboná por transferencia o efectivo vía WhatsApp.</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {activeRaffle.promotions.map((promo) => (
+                      <div key={promo.id} className={`promo-card-3d rounded-3xl p-6 flex flex-col justify-between border ${promo.recommended ? 'glass-card-gold' : 'glass-card border-gray-800'}`}>
+                        <div>
+                          <div className="text-center pb-4 border-b border-gray-800">
+                            <span className="text-xs font-bold uppercase text-gray-400">{promo.label}</span>
+                            <div className="text-5xl font-black text-white mt-2 font-mono-num">{promo.chances}</div>
+                            <span className="text-xs text-gray-400 uppercase">Chances</span>
+                          </div>
+                          <div className="py-6 text-center">
+                            <div className="text-3xl font-bold text-emerald-400 font-mono-num">${promo.price.toLocaleString('es-AR')}</div>
+                          </div>
+                        </div>
+                        <button onClick={() => handleStartReservation(promo)} className="w-full py-4 rounded-xl font-bold text-sm bg-brand-600 hover:bg-brand-500 text-white transition shadow-lg">
+                          Solicitar Chances
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {view === 'admin_login' && (
+              <div className="max-w-md mx-auto px-4 py-20">
+                <div className="glass-card p-8 rounded-3xl border border-gray-800 shadow-2xl space-y-6">
+                  <h2 className="text-2xl font-bold text-white text-center">Acceso al Panel</h2>
+                  <form onSubmit={handleAdminLogin} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-gray-400 mb-1">Usuario</label>
+                      <input type="text" required value={adminUser} onChange={(e) => setAdminUser(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-gray-400 mb-1">Contraseña</label>
+                      <input type="password" required value={adminPass} onChange={(e) => setAdminPass(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm" />
+                    </div>
+                    <button type="submit" className="w-full py-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-base transition">Ingresar</button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {view === 'admin_dashboard' && isLoggedIn && (
+              <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+                <div className="glass-card p-6 rounded-2xl flex justify-between items-center">
+                  <h2 className="text-2xl font-bold text-white">Panel de Administración de Ventas</h2>
+                  <button onClick={() => setView('public')} className="px-4 py-2 bg-gray-800 rounded-xl text-xs font-bold text-white">Volver al sitio</button>
+                </div>
+                <div className="glass-card p-6 rounded-2xl space-y-4">
+                  <h3 className="text-xl font-bold text-white">Solicitudes de Compra Recibidas ({orders.length})</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-900 text-gray-400 uppercase border-b border-gray-800">
+                        <tr>
+                          <th className="p-3">Código</th>
+                          <th className="p-3">Participante</th>
+                          <th className="p-3">Teléfono</th>
+                          <th className="p-3">Chances</th>
+                          <th className="p-3">Monto</th>
+                          <th className="p-3">Estado</th>
+                          <th className="p-3 text-right">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800 text-gray-300">
+                        {orders.map(o => (
+                          <tr key={o.id}>
+                            <td className="p-3 font-mono-num font-bold text-white">{o.id}</td>
+                            <td className="p-3">{o.firstName} {o.lastName}</td>
+                            <td className="p-3">{o.phone}</td>
+                            <td className="p-3">{o.chancesCount}</td>
+                            <td className="p-3 font-bold text-emerald-400">${o.totalAmount}</td>
+                            <td className="p-3"><span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-950 text-amber-400">{o.status}</span></td>
+                            <td className="p-3 text-right">
+                              {o.status === 'pending_payment' && (
+                                <button onClick={() => { DatabaseEngine.confirmPaymentAndAssignNumbers(o.id); refreshData(); showToast("Pago confirmado", "success"); }} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold">Confirmar</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {checkoutModalOpen && selectedPromo && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+              <div className="glass-card max-w-lg w-full rounded-2xl border border-gray-700 p-6 relative space-y-4">
+                <button onClick={() => { setCheckoutModalOpen(false); setActiveOrder(null); }} className="absolute top-4 right-4 text-gray-400 hover:text-white"><i className="fas fa-times"></i></button>
+                {!activeOrder ? (
+                  <form onSubmit={handleConfirmReservation} className="space-y-4">
+                    <h3 className="text-xl font-bold text-white">Solicitar {selectedPromo.label} ({selectedPromo.chances} chances)</h3>
+                    <div>
+                      <label className="block text-xs uppercase text-gray-400 mb-1">Nombre</label>
+                      <input type="text" required value={buyerInfo.firstName} onChange={(e) => setBuyerInfo({...buyerInfo, firstName: e.target.value})} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs uppercase text-gray-400 mb-1">Apellido</label>
+                      <input type="text" required value={buyerInfo.lastName} onChange={(e) => setBuyerInfo({...buyerInfo, lastName: e.target.value})} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs uppercase text-gray-400 mb-1">WhatsApp de Contacto</label>
+                      <input type="tel" required value={buyerInfo.phone} onChange={(e) => setBuyerInfo({...buyerInfo, phone: e.target.value})} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input type="checkbox" id="terms" required checked={buyerInfo.acceptedTerms} onChange={(e) => setBuyerInfo({...buyerInfo, acceptedTerms: e.target.checked})} className="w-4 h-4 rounded bg-gray-900 border-gray-700 text-brand-600" />
+                      <label htmlFor="terms" className="text-xs text-gray-400 cursor-pointer">Acepto los términos y condiciones del sorteo.</label>
+                    </div>
+                    <button type="submit" className="w-full py-3.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm shadow-lg">Generar Solicitud</button>
+                  </form>
+                ) : (
+                  <div className="text-center space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto text-2xl"><i className="fas fa-check"></i></div>
+                    <h3 className="text-xl font-bold text-white">¡Solicitud Registrada!</h3>
+                    <p className="text-xs text-gray-300">Código de Solicitud: <strong className="text-white font-mono-num">{activeOrder.id}</strong></p>
+                    <a href={getWhatsAppLink(activeOrder)} target="_blank" rel="noopener noreferrer" className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm flex items-center justify-center space-x-2">
+                      <i className="fab fa-whatsapp text-xl"></i><span>Enviar Comprobante por WhatsApp</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
